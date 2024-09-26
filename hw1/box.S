@@ -5,7 +5,7 @@
 .extern		term_txtwidth
 .extern		putc_to
 .extern		print_to
-_box:
+box:
 
 	// standard entry: save link and stack frame registers (x29 and x30)
 	// load the stack frame with the pointer to current frame. 
@@ -21,7 +21,7 @@ _box:
 	// Make sure the arguments are valid
 	
 	bl _box_check_box_
-	cmp w0, 0
+	cmp x0, 0
 	beq _box_error_
 	
 	// first draw the corners!
@@ -36,18 +36,21 @@ _box:
 	// +------------+
 	ldp x0, x1, [sp]
 	ldp x2, x3, [sp, 16]
-	bl _box_draw_corners_
+	bl _box_draw_top_bottom_
 	
 	// and the left and right sides!
 	ldp x0, x1, [sp]
 	ldp x2, x3, [sp, 16]
-	bl _box_draw_corners_
+	bl _box_draw_right_left_
 	
-	mov w0, 0
+	mov x0, 0
 	b _box_exit_
 	
 
 _box_check_box_:
+
+	sub sp, sp, 128
+	str x30, [sp]
 	
 	// if end row <= to start row OR end column <= start column, throw an error and call it a day.
 	cmp w2, w0
@@ -68,8 +71,15 @@ _box_check_box_:
 	cmp w0, w2
 	bge _box_error_
 
+	ldr x30, [sp]
+	add sp, sp, 128
+	ret
+
 
 _box_draw_corners_:
+
+	sub sp, sp, 128
+	str x30, [sp]
 
 	// move w0-w3 into w4-w7
 	mov w4, w0					// start row
@@ -104,6 +114,10 @@ _box_draw_corners_:
 	//mov w2, w8					// +
 	bl putc_to
 
+	ldr x30, [sp]
+	add sp, sp, 128
+	ret
+
 _box_draw_top_bottom_:
 
 _box_draw_right_left_:
@@ -112,7 +126,7 @@ _box_error_:
 	mov w0, 1
 	b _box_exit_
 _box_exit_:
-	add sp, sp, 32
-	ldp x29, x30, [sp], 16
+	add sp, sp, 32					// sp=sp+32 -- this gets us to where we can pull x29 and x30 from the stack.
+	ldp x29, x30, [sp], 16			// load values at sp into x29 and x30 THEN update sp = sp+16
 	ret
 	
