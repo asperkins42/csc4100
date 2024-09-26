@@ -7,6 +7,27 @@
 .extern		print_to
 box:
 
+	// understanding pre/post indexing and such
+
+	// stp x29, x30, [sp], 16 			// these are equivalent
+	// 
+	// stp x29, x30, [sp]
+	// add sp, sp, 16
+
+	// stp x29, x30, [sp, 16]!			// is equivalent to
+	//
+	// add sp, sp, 16
+	// stp x29, x30, [sp]
+
+	/*
+
+some_func:
+	stp x29, x30, [sp, -16]!
+	....
+	ldp x29, x30, [sp], 16
+	ret
+	*/
+
 	// standard entry: save link and stack frame registers (x29 and x30)
 	// load the stack frame with the pointer to current frame. 
 	
@@ -20,15 +41,13 @@ box:
 	// start row in w0, start column in w1, end row in w2, end column in w3
 	// Make sure the arguments are valid
 	
-	bl _box_check_box_
-	cmp x0, 0
-	beq _box_error_
+	//bl _box_check_box_
+	//cmp x0, 0
+	//beq _box_error_
 	
 	// first draw the corners!
 	// +		+
 	// + 		+
-	ldp x0, x1, [sp]
-	ldp x2, x3, [sp, 16]
 	bl _box_draw_corners_
 	
 	// now, draw the top and bottom!
@@ -46,12 +65,15 @@ box:
 	mov x0, 0
 	b _box_exit_
 	
+/*
 
 _box_check_box_:
 
-	sub sp, sp, 128
-	str x30, [sp]
-	
+	stp x29, x30, [sp, -16]!	// move 16 bytes then store
+
+	ldp x0, x1, [sp]
+	ldp x2, x3, [sp, 16]
+
 	// if end row <= to start row OR end column <= start column, throw an error and call it a day.
 	cmp w2, w0
 	ble _box_error_
@@ -63,23 +85,26 @@ _box_check_box_:
 
 	// get the width in columns of the screen and store in w0, compare against end columns value
 	bl term_txtwidth
+	ldp x2, x3, [sp, 16] // in case w3 is overwritten 
 	cmp w0, w3
 	bge _box_error_
 
 	//get the height in rows of the screen and store in w0, compare against end rows value
 	bl term_txtheight
+	ldp x2, x3, [sp, 16]
 	cmp w0, w2
 	bge _box_error_
 
-	ldr x30, [sp]
-	add sp, sp, 128
+	ldp x29, x30, [sp], 16
 	ret
-
+*/
 
 _box_draw_corners_:
 
-	sub sp, sp, 128
-	str x30, [sp]
+	stp x29, x30, [sp, -16]!	// move 16 bytes then store
+
+	ldp x0, x1, [sp]
+	ldp x2, x3, [sp, 16]
 
 	// move w0-w3 into w4-w7
 	mov w4, w0					// start row
@@ -87,7 +112,7 @@ _box_draw_corners_:
 	mov w6, w2					// end row
 	mov w7, w3					// end col
 
-	// load '+' into w5!
+	// load '+' into w8!
 	mov w8, '+'
 
 	// get registers ready for first call
@@ -95,30 +120,77 @@ _box_draw_corners_:
 	mov w1, w5					// start col
 	mov w2, w8					// +
 	bl putc_to
+
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp, 16]
 	
 	// get registers ready for second call
 	mov w0, w4					// start row
-	mov w1, w6					// end col
-	//mov w2, w8					// +
+	mov w1, w7					// end col
+	mov w2, w8					// +
+
 	bl putc_to
+
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp, 16]
 	
 	// get registers ready for third call
 	mov w0, w6					// end row
 	mov w1, w5					// start col
-	//mov w2, w8					// +
+	mov w2, w8					// +
 	bl putc_to
+
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp, 16]
 	
 	// get registers ready for last call
 	mov w0, w6					// end row
 	mov w1, w7					// end col
-	//mov w2, w8					// +
+	mov w2, w8					// +
 	bl putc_to
 
-	ldr x30, [sp]
-	add sp, sp, 128
+	ldp x29, x30, [sp], 16
 	ret
 
 _box_draw_top_bottom_:
+
+	stp x29, x30, [sp, -16]!	// move 16 bytes then store
+	add sp, sp, 16
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp, 16]
+
+	b _top_bottom_loop_
+
+_top_bottom_loop_:
+
+	add x8, x8, 1
+	add x5, x5, x8
+
+	mov x0, x4
+	mov x1, x5
+	mov x2, '_'
+	bl putc_to
+
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp, 16]
+
+	mov x0, x6
+	mov x1, x5
+	mov x2, '_'
+	bl putc_to
+
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp, 16]
+
+	cmp x8, x6
+	bne _top_bottom_loop_
+	b _top_bottom_done_
+
+_top_bottom_done_:
+
+	sub sp, sp, 16
+	ldp x29, x30, [sp], 16
+	ret
 
 _box_draw_right_left_:
 
