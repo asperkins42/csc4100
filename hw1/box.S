@@ -7,27 +7,6 @@
 .extern		print_to
 box:
 
-	// understanding pre/post indexing and such
-
-	// stp x29, x30, [sp], 16 			// these are equivalent
-	// 
-	// stp x29, x30, [sp]
-	// add sp, sp, 16
-
-	// stp x29, x30, [sp, 16]!			// is equivalent to
-	//
-	// add sp, sp, 16
-	// stp x29, x30, [sp]
-
-	/*
-
-some_func:
-	stp x29, x30, [sp, -16]!
-	....
-	ldp x29, x30, [sp], 16
-	ret
-	*/
-
 	// standard entry: save link and stack frame registers (x29 and x30)
 	// load the stack frame with the pointer to current frame. 
 	
@@ -41,164 +20,199 @@ some_func:
 	// start row in w0, start column in w1, end row in w2, end column in w3
 	// Make sure the arguments are valid
 	
-	//bl _box_check_box_
-	//cmp x0, 0
-	//beq _box_error_
+	bl _box_check_box_
+	cmp w0, 0
+	bne _box_error_
 	
 	// first draw the corners!
 	// +		+
 	// + 		+
+	ldp x0, x1, [sp]
+	ldp x2, x3, [sp, 16]
 	bl _box_draw_corners_
-	
-	// now, draw the top and bottom!
-	// +------------+
-	// +------------+
+
+	// top and bottom
 	ldp x0, x1, [sp]
 	ldp x2, x3, [sp, 16]
 	bl _box_draw_top_bottom_
 	
-	// and the left and right sides!
+	// left and right
 	ldp x0, x1, [sp]
 	ldp x2, x3, [sp, 16]
-	bl _box_draw_right_left_
+	bl _box_draw_left_right_
 	
-	mov x0, 0
+	mov w0, 0
 	b _box_exit_
 	
-/*
+ _box_check_box_:
 
-_box_check_box_:
+	//load values into x4-x7 from the stack, store x30 elsewhere in the stack, readjust sp
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp, 16]
+	sub sp, sp, 16
+	str x30, [sp]
+	add sp, sp, 16	
 
-	stp x29, x30, [sp, -16]!	// move 16 bytes then store
-
-	ldp x0, x1, [sp]
-	ldp x2, x3, [sp, 16]
-
-	// if end row <= to start row OR end column <= start column, throw an error and call it a day.
-	cmp w2, w0
-	ble _box_error_
-	cmp w3, w1
-	ble _box_error_
-
-	// now start row is in w4 so w0 can be overwritten without worry
-	mov w4, w0
-
-	// get the width in columns of the screen and store in w0, compare against end columns value
-	bl term_txtwidth
-	ldp x2, x3, [sp, 16] // in case w3 is overwritten 
-	cmp w0, w3
-	bge _box_error_
-
-	//get the height in rows of the screen and store in w0, compare against end rows value
+	// get max_height and store in w0. Load end_row into x6 from the stack
 	bl term_txtheight
-	ldp x2, x3, [sp, 16]
-	cmp w0, w2
+	ldp x6, x7, [sp, 16]
+
+	// my attempt at absolute value, errors probably arise when dividing by zero.
+	// doing the compare without the mul and udiv instructions causes the program not to run
+	mul x0, x0, x0
+	udiv x0, x0, x0
+
+	// compare max_rows to end_row, if end_row is greater or equal, branch to _box_error_
+	cmp x0, x6
 	bge _box_error_
 
-	ldp x29, x30, [sp], 16
+	// very similar to above, but for max_cols and end_cols
+	bl term_txtwidth
+	ldp x6, x7, [sp, 16]
+	mul x0, x0, x0
+	udiv x0, x0, x0
+	cmp x0, x7
+	bge _box_error_
+
+	// these two sanity checks don't have any gross "absolute value" stuff going on because they're both
+	// unsigned and would not cause the program to crash.
+
+	// compare end and start cols, throw error if start is >= to end
+	ldp x4, x5, [sp]
+	cmp x5, x7
+	bge _box_error_
+
+	// compare end and start cols, throw error if start is >= to end
+	cmp x4, x6
+	bge _box_error_
+
+	// if we are here, then we have sane inputs, return a 0 in w0. adjust sp and pull return address, then adjust sp 1 more time
+	// my stack management is GARBAGE and I am sorry :smile: I will get better as class goes on 
+	mov x0, 0
+	sub sp, sp, 16
+	ldr x30, [sp]
+	add sp, sp, 16
 	ret
-*/
+
+	
 
 _box_draw_corners_:
 
-	stp x29, x30, [sp, -16]!	// move 16 bytes then store
+	// save my parameters into w4-w7, uncertain if w0-w3 will be overwritten. adjust sp and place return address on stack
+	mov w4, w0	
+	mov w5, w1				
+	mov w6, w2				
+	mov w7, w3
+	sub sp, sp, 16
+	str x30, [sp]					
 
-	ldp x0, x1, [sp]
-	ldp x2, x3, [sp, 16]
-
-	// move w0-w3 into w4-w7
-	mov w4, w0					// start row
-	mov w5, w1					// start col
-	mov w6, w2					// end row
-	mov w7, w3					// end col
-
-	// load '+' into w8!
-	mov w8, '+'
-
-	// get registers ready for first call
-	mov w0, w4					// start row
-	mov w1, w5					// start col
-	mov w2, w8					// +
+	// load '+' into w8! then put it in w2. need to keep doing this everytime I think
+	// also values are already in w0, w1 from initial load so start row start col are taken care of. call putc
+	mov  w8, '+'
+	mov w2, w8
 	bl putc_to
-
-	ldp x4, x5, [sp]
-	ldp x6, x7, [sp, 16]
 	
-	// get registers ready for second call
+	// set start row and end col
 	mov w0, w4					// start row
 	mov w1, w7					// end col
 	mov w2, w8					// +
-
 	bl putc_to
-
-	ldp x4, x5, [sp]
-	ldp x6, x7, [sp, 16]
 	
-	// get registers ready for third call
+	// set end row and start col 
 	mov w0, w6					// end row
 	mov w1, w5					// start col
 	mov w2, w8					// +
 	bl putc_to
-
-	ldp x4, x5, [sp]
-	ldp x6, x7, [sp, 16]
 	
-	// get registers ready for last call
+	// set end row and end col
 	mov w0, w6					// end row
 	mov w1, w7					// end col
 	mov w2, w8					// +
 	bl putc_to
 
-	ldp x29, x30, [sp], 16
+	//pull return address from stack and adjust sp, then return
+	ldr x30, [sp]
+	add sp, sp, 16
 	ret
 
-_box_draw_top_bottom_:
+_box_draw_left_right_:
 
-	stp x29, x30, [sp, -16]!	// move 16 bytes then store
-	add sp, sp, 16
-	ldp x4, x5, [sp]
-	ldp x6, x7, [sp, 16]
+	// adjust stack pointer and save return address
+	sub sp, sp, 16
+	str x30, [sp]
 
-	b _top_bottom_loop_
+	// pull values from stack (starting to understand it now :big_smile:)
+	ldp x4, x5, [sp, 16]
+	ldp x6, x7, [sp, 32]
 
-_top_bottom_loop_:
+	// decrement end row
+	sub x6, x6, 1
+_box_draw_left_right_loop_: 
 
-	add x8, x8, 1
-	add x5, x5, x8
-
+	// increment start row. put sr and sc into along with char into regs to send to putc_to
+	add x4, x4, 1
 	mov x0, x4
 	mov x1, x5
-	mov x2, '_'
+	mov x2, '|'
 	bl putc_to
 
-	ldp x4, x5, [sp]
-	ldp x6, x7, [sp, 16]
+	// start row, end column, and char to regs to send to putc_to
+	mov x0, x4
+	mov x1, x7
+	mov x2, '|'
+	bl putc_to
 
+	// if loop isn't finished, loop again. otherwise, done
+	cmp x4, x6
+	bne _box_draw_left_right_loop_
+	b _box_draw_left_right_done_
+
+_box_draw_left_right_done_: 
+
+	// load return address back into x30 and adjust stack
+	ldr x30, [sp]
+	add sp, sp, 16
+	ret
+	
+		
+_box_draw_top_bottom_:
+
+	// not going to comment this entirely. EXTREMELY similar to _box_draw_left_right_
+	sub sp, sp, 16
+	str x30, [sp]
+	ldp x4, x5, [sp, 16]
+	ldp x6, x7, [sp, 32]
+	sub x7, x7, 1
+_box_draw_top_bottom_loop_: 
+	add x5, x5, 1
+	mov x0, x4
+	mov x1, x5
+	mov x2, '-'
+	bl putc_to
+	
 	mov x0, x6
 	mov x1, x5
-	mov x2, '_'
+	mov x2, '-'
 	bl putc_to
+	
+	cmp x5, x7
+	bne _box_draw_top_bottom_loop_
+	b _box_draw_top_bottom_done_
 
-	ldp x4, x5, [sp]
-	ldp x6, x7, [sp, 16]
-
-	cmp x8, x6
-	bne _top_bottom_loop_
-	b _top_bottom_done_
-
-_top_bottom_done_:
-
-	sub sp, sp, 16
-	ldp x29, x30, [sp], 16
-	ret
-
-_box_draw_right_left_:
+_box_draw_top_bottom_done_: 
+	ldr x30, [sp]
+	add sp, sp, 16
+	ret	
 
 _box_error_:
+
+	// if error is thrown, load w0 with a 1 to return to C
 	mov w0, 1
 	b _box_exit_
 _box_exit_:
-	add sp, sp, 32					// sp=sp+32 -- this gets us to where we can pull x29 and x30 from the stack.
-	ldp x29, x30, [sp], 16			// load values at sp into x29 and x30 THEN update sp = sp+16
+
+	// return to C by pulling original x30 return address off of the stack
+	add sp, sp, 32
+	ldp x29, x30, [sp], 16
 	ret
 	

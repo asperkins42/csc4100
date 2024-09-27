@@ -16,4 +16,8 @@ run:
 	qemu-system-aarch64 -machine raspi3b   -kernel kernel.elf
 
 clean: 
-	rm boot.d box.o kernel.o boot.o box.d kernel.d		
+	rm boot.d box.o kernel.o boot.o box.d kernel.d kernel.elf	
+
+debug: 
+	qemu-system-aarch64 -machine raspi3b -S -s -kernel kernel.elf & 
+	ddd --debugger 'gdb-multiarch -ex "target remote localhost:1234" -ex "break main" -ex "continue"' kernel.elf	
